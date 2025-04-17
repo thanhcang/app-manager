@@ -1,0 +1,15 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+      "target": "ESNext",
+      "module": "ESNext",
+      "lib": ["DOM", "ESNext"],
+      "jsx": "react-jsx",
+      "baseUrl": "./src/frontend",
+      "paths": {
+        "@/*": ["*"]
+      },
+      "moduleResolution": "node"
+    },
+    "include": ["src/frontend"]
+  }

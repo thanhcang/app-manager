@@ -9,7 +9,7 @@ dotenv.config({
 });
 
 const app = express();
-const port = 5172;
+const port = process.env.APP_PORT ? parseInt(process.env.APP_PORT, 10) : 3000; // Default to 3000 if undefined
 app.use(cors());
 app.use(express.json());
 app.get('/', (req, res) => {
