@@ -1,7 +1,9 @@
 import express from 'express';
-import { exec } from 'child_process';
+import { ChildProcessWithoutNullStreams, exec, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+
+const runningProcesses: Record<string, ChildProcessWithoutNullStreams> = {};
 
 export const routes = express.Router();
 routes.get('/logs', (req, res) => {
@@ -18,10 +20,15 @@ routes.get('/apps', (_, res) => {
     const apps = fs.readdirSync(basePath, { withFileTypes: true })
         .filter((dirent) => dirent.isDirectory())
         .map((dirent, index) => {
+            const dirName = dirent.name.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+            let port = process.env.PLATFORM_PORT || 3000;
+            if (dirName == 'V2 Sync') {
+                port = '3001'
+            }
             return {
-                name: dirent.name.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()), // format name
+                name: dirName,
                 folder: dirent.name,
-                port: process.env.PLATFORM_PORT || 3000,
+                port: port
             };
         });
 
@@ -83,3 +90,50 @@ routes.post('/stop', (req, res) => {
         res.json({ message: `Stopped ${folder}`, output: stdout });
     });
 });
+
+routes.post('/run-command', (req, res) => {
+    const basePath = process.env.PLATFORM_BASE_PATH ||'';
+    const { folder, command } = req.body;
+    if (!folder || !command) return res.status(400).send('Missing input');
+  
+    const fullPath = path.join(basePath, folder);
+  
+    // If there's already a process running for this folder
+    if (runningProcesses[folder]) {
+      return res.status(400).json({ error: 'Process already running for this app' });
+    }
+  
+    const child = spawn(command, {
+      cwd: fullPath,
+      shell: true,
+    });
+  
+    runningProcesses[folder] = child;
+  
+    child.stdout.on('data', (data) => {
+      console.log(`[${folder}] ${data.toString()}`);
+    });
+  
+    child.stderr.on('data', (data) => {
+      console.error(`[${folder}] ${data.toString()}`);
+    });
+  
+    child.on('close', (code) => {
+      console.log(`Process for ${folder} exited with code ${code}`);
+      delete runningProcesses[folder];
+    });
+  
+    res.status(200).json({ message: `Started: ${command}` });
+  });
+
+routes.post('/stop-command', (req, res) => {
+    const { folder } = req.body;
+    const proc = runningProcesses[folder];
+
+    if (!proc) return res.status(400).json({ error: 'No running process found for this app' });
+
+    proc.kill('SIGTERM'); // or 'SIGKILL' if needed
+    delete runningProcesses[folder];
+
+    res.json({ message: `Stopped process for ${folder}` });
+}); 
